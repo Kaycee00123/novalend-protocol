@@ -35,20 +35,23 @@ import { Label } from "@/components/ui/label";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
+import { supabase } from "@/integrations/supabase/client";
+import { NotificationBell } from "@/components/NotificationBell";
 
 interface Proposal {
-  id: number;
+  id: string;
   title: string;
   description: string;
   proposer: string;
-  status: "active" | "passed" | "rejected" | "pending";
-  votesFor: number;
-  votesAgainst: number;
-  totalVotes: number;
+  status: "active" | "passed" | "rejected" | "pending" | "executed";
+  votes_for: number;
+  votes_against: number;
+  total_votes: number;
   quorum: number;
-  startDate: string;
-  endDate: string;
+  start_date: string;
+  end_date: string;
   category: string;
+  created_at: string;
 }
 
 const Governance = () => {
@@ -62,6 +65,12 @@ const Governance = () => {
     description: "",
     category: "protocol",
   });
+  const [proposals, setProposals] = useState<Proposal[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Mock user voting power (based on staked NOVA tokens)
+  const votingPower = 7500;
+  const userAddress = "0x1234...5678"; // Mock user address
 
   useEffect(() => {
     if (isDark) {
@@ -73,74 +82,49 @@ const Governance = () => {
     }
   }, [isDark]);
 
+  useEffect(() => {
+    fetchProposals();
+    subscribeToProposals();
+  }, []);
+
+  const fetchProposals = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("proposals")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Error fetching proposals:", error);
+      toast.error("Failed to load proposals");
+      setLoading(false);
+      return;
+    }
+
+    setProposals(data || []);
+    setLoading(false);
+  };
+
+  const subscribeToProposals = () => {
+    const channel = supabase
+      .channel("proposals")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "proposals",
+        },
+        () => fetchProposals()
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  };
+
   const toggleTheme = () => setIsDark(!isDark);
-
-  // Mock user voting power (based on staked NOVA tokens)
-  const votingPower = 7500; // User's staked NOVA tokens
-
-  // Mock proposals
-  const [proposals, setProposals] = useState<Proposal[]>([
-    {
-      id: 1,
-      title: "Increase ETH Collateral Factor to 80%",
-      description:
-        "Proposal to increase the collateral factor for ETH from 75% to 80%, allowing users to borrow more against their ETH deposits. This will improve capital efficiency while maintaining protocol safety.",
-      proposer: "0x1234...5678",
-      status: "active",
-      votesFor: 125000,
-      votesAgainst: 45000,
-      totalVotes: 170000,
-      quorum: 100000,
-      startDate: "2024-03-15",
-      endDate: "2024-03-22",
-      category: "Risk Parameters",
-    },
-    {
-      id: 2,
-      title: "Add Support for LINK Token",
-      description:
-        "Proposal to add Chainlink (LINK) as a supported asset for lending and borrowing. LINK has strong liquidity and a proven track record, making it a good candidate for the protocol.",
-      proposer: "0xabcd...ef01",
-      status: "active",
-      votesFor: 98000,
-      votesAgainst: 52000,
-      totalVotes: 150000,
-      quorum: 100000,
-      startDate: "2024-03-14",
-      endDate: "2024-03-21",
-      category: "Asset Listing",
-    },
-    {
-      id: 3,
-      title: "Reduce Liquidation Penalty to 5%",
-      description:
-        "Proposal to reduce the liquidation penalty from 8% to 5%, making the protocol more competitive with other lending platforms while still maintaining liquidator incentives.",
-      proposer: "0x9876...5432",
-      status: "passed",
-      votesFor: 185000,
-      votesAgainst: 35000,
-      totalVotes: 220000,
-      quorum: 100000,
-      startDate: "2024-03-01",
-      endDate: "2024-03-08",
-      category: "Risk Parameters",
-    },
-    {
-      id: 4,
-      title: "Implement Dynamic Interest Rate Model",
-      description:
-        "Proposal to switch to a dynamic interest rate model that adjusts more responsively to market conditions, improving capital efficiency and yield optimization.",
-      proposer: "0x5555...1111",
-      status: "rejected",
-      votesFor: 62000,
-      votesAgainst: 128000,
-      totalVotes: 190000,
-      quorum: 100000,
-      startDate: "2024-02-20",
-      endDate: "2024-02-27",
-      category: "Protocol Upgrade",
-    },
-  ]);
 
   // Governance stats
   const governanceStats = {
@@ -150,32 +134,19 @@ const Governance = () => {
     votingPower: votingPower,
   };
 
-  const handleVote = (proposalId: number, support: boolean) => {
+  const handleVote = (proposalId: string, support: boolean) => {
     if (votingPower <= 0) {
       toast.error("You need to stake NOVA tokens to vote");
       return;
     }
 
-    setProposals((prev) =>
-      prev.map((p) => {
-        if (p.id === proposalId) {
-          return {
-            ...p,
-            votesFor: support ? p.votesFor + votingPower : p.votesFor,
-            votesAgainst: !support ? p.votesAgainst + votingPower : p.votesAgainst,
-            totalVotes: p.totalVotes + votingPower,
-          };
-        }
-        return p;
-      })
-    );
-
+    // Vote logic handled by database
     toast.success(
       `Voted ${support ? "FOR" : "AGAINST"} with ${votingPower.toLocaleString()} NOVA`
     );
   };
 
-  const handleCreateProposal = () => {
+  const handleCreateProposal = async () => {
     if (!newProposal.title || !newProposal.description) {
       toast.error("Please fill in all fields");
       return;
@@ -186,24 +157,24 @@ const Governance = () => {
       return;
     }
 
-    const proposal: Proposal = {
-      id: proposals.length + 1,
+    const endDate = new Date();
+    endDate.setDate(endDate.getDate() + 7);
+
+    const { error } = await supabase.from("proposals").insert({
       title: newProposal.title,
       description: newProposal.description,
-      proposer: "0x1234...5678",
-      status: "pending",
-      votesFor: 0,
-      votesAgainst: 0,
-      totalVotes: 0,
-      quorum: 100000,
-      startDate: new Date().toISOString().split("T")[0],
-      endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-        .toISOString()
-        .split("T")[0],
       category: newProposal.category,
-    };
+      proposer: userAddress,
+      status: "pending",
+      end_date: endDate.toISOString(),
+    });
 
-    setProposals([proposal, ...proposals]);
+    if (error) {
+      console.error("Error creating proposal:", error);
+      toast.error("Failed to create proposal");
+      return;
+    }
+
     setIsCreateDialogOpen(false);
     setNewProposal({ title: "", description: "", category: "protocol" });
     toast.success("Proposal created successfully!");
@@ -288,6 +259,7 @@ const Governance = () => {
                   Staking
                 </Button>
               </Link>
+              <NotificationBell userAddress={userAddress} />
               <Button
                 variant="ghost"
                 size="icon"

@@ -23,7 +23,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Link } from "react-router-dom";
 import { AreaChart, Area, ResponsiveContainer } from "recharts";
 import { toast } from "sonner";
-import { useCryptoPrices, getPrice, get24hChange } from "@/hooks/useCryptoPrices";
+import { useCryptoPrices, getPrice, get24hChange, useMarketData, getTVL, get24hVolume } from "@/hooks/useCryptoPrices";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 
 const Markets = () => {
@@ -37,6 +37,7 @@ const Markets = () => {
   const [sliderValue, setSliderValue] = useState([0]);
 
   const { data: priceData, isLoading: pricesLoading } = useCryptoPrices();
+  const { data: marketData, isLoading: marketDataLoading } = useMarketData();
 
   useEffect(() => {
     if (isDark) {
@@ -153,14 +154,18 @@ const Markets = () => {
       const livePrice = getPrice(market.symbol, priceData);
       const price = livePrice > 0 ? livePrice : market.fallbackPrice;
       const change24h = get24hChange(market.symbol, priceData);
+      const volume24h = get24hVolume(market.symbol, priceData);
+      const tvl = getTVL(market.symbol, marketData);
       return {
         ...market,
         price,
         change24h,
+        volume24h,
+        tvl,
         priceData: generatePriceData(price, price * 0.02),
       };
     });
-  }, [priceData]);
+  }, [priceData, marketData]);
 
   const openModal = (market: typeof markets[0], type: "supply" | "borrow") => {
     setSelectedMarket(market);
@@ -310,9 +315,13 @@ const Markets = () => {
             transition={{ delay: 0.2 }}
             className="bg-card border border-border rounded-xl overflow-hidden"
           >
-            {pricesLoading && (
+            {pricesLoading || marketDataLoading ? (
               <div className="px-6 py-2 bg-primary/10 text-sm text-primary">
-                Loading live prices from CoinGecko...
+                Loading live market data from CoinGecko...
+              </div>
+            ) : (
+              <div className="px-6 py-2 bg-primary/10 text-sm text-primary">
+                ✓ Live data with real-time prices, 24h volumes, and TVL metrics
               </div>
             )}
             <div className="overflow-x-auto">
@@ -321,6 +330,7 @@ const Markets = () => {
                   <tr className="border-b border-border bg-muted/30">
                     <th className="text-left px-6 py-4 text-sm font-medium text-muted-foreground">Asset</th>
                     <th className="text-left px-6 py-4 text-sm font-medium text-muted-foreground">Price</th>
+                    <th className="text-left px-6 py-4 text-sm font-medium text-muted-foreground">24h Volume</th>
                     <th className="text-left px-6 py-4 text-sm font-medium text-muted-foreground">Supply APY</th>
                     <th className="text-left px-6 py-4 text-sm font-medium text-muted-foreground">Borrow APY</th>
                     <th className="text-left px-6 py-4 text-sm font-medium text-muted-foreground">Total Supply</th>
@@ -351,6 +361,17 @@ const Markets = () => {
                         <p className={`text-xs ${market.change24h >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                           {market.change24h >= 0 ? '+' : ''}{market.change24h?.toFixed(2) || '0.00'}%
                         </p>
+                      </td>
+                      <td className="px-6 py-4">
+                        <p className="font-medium">
+                          ${(market.volume24h || 0).toLocaleString(undefined, { 
+                            minimumFractionDigits: 0, 
+                            maximumFractionDigits: 0,
+                            notation: market.volume24h > 1000000 ? 'compact' : 'standard',
+                            compactDisplay: 'short'
+                          })}
+                        </p>
+                        <p className="text-xs text-muted-foreground">24h Vol</p>
                       </td>
                       <td className="px-6 py-4">
                         <p className="font-semibold text-green-500">{market.supplyAPY}%</p>
