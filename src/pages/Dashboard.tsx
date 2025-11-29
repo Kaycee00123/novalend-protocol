@@ -17,6 +17,7 @@ import {
   faArrowTrendUp,
   faChartPie,
   faVoteYea,
+  faChartBar,
 } from "@fortawesome/free-solid-svg-icons";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -250,6 +251,12 @@ const Dashboard = () => {
                 <Button variant="ghost" size="sm">
                   <FontAwesomeIcon icon={faChartLine} className="mr-2" />
                   Markets
+                </Button>
+              </Link>
+              <Link to="/analytics">
+                <Button variant="ghost" size="sm">
+                  <FontAwesomeIcon icon={faChartBar} className="mr-2" />
+                  Analytics
                 </Button>
               </Link>
               <Link to="/staking">
