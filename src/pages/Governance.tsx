@@ -35,23 +35,20 @@ import { Label } from "@/components/ui/label";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { supabase } from "@/integrations/supabase/client";
-import { NotificationBell } from "@/components/NotificationBell";
 
 interface Proposal {
-  id: string;
+  id: number;
   title: string;
   description: string;
   proposer: string;
   status: "active" | "passed" | "rejected" | "pending" | "executed";
-  votes_for: number;
-  votes_against: number;
-  total_votes: number;
+  votesFor: number;
+  votesAgainst: number;
+  totalVotes: number;
   quorum: number;
-  start_date: string;
-  end_date: string;
+  startDate: Date;
+  endDate: Date;
   category: string;
-  created_at: string;
 }
 
 const Governance = () => {
@@ -65,12 +62,9 @@ const Governance = () => {
     description: "",
     category: "protocol",
   });
-  const [proposals, setProposals] = useState<Proposal[]>([]);
-  const [loading, setLoading] = useState(true);
 
   // Mock user voting power (based on staked NOVA tokens)
   const votingPower = 7500;
-  const userAddress = "0x1234...5678"; // Mock user address
 
   useEffect(() => {
     if (isDark) {
@@ -82,49 +76,71 @@ const Governance = () => {
     }
   }, [isDark]);
 
-  useEffect(() => {
-    fetchProposals();
-    subscribeToProposals();
-  }, []);
-
-  const fetchProposals = async () => {
-    setLoading(true);
-    const { data, error } = await supabase
-      .from("proposals")
-      .select("*")
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      console.error("Error fetching proposals:", error);
-      toast.error("Failed to load proposals");
-      setLoading(false);
-      return;
-    }
-
-    setProposals(data || []);
-    setLoading(false);
-  };
-
-  const subscribeToProposals = () => {
-    const channel = supabase
-      .channel("proposals")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "proposals",
-        },
-        () => fetchProposals()
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  };
-
   const toggleTheme = () => setIsDark(!isDark);
+
+  // Mock proposals
+  const [proposals] = useState<Proposal[]>([
+    {
+      id: 1,
+      title: "Increase USDC Collateral Factor to 85%",
+      description:
+        "Proposal to increase the collateral factor for USDC from 80% to 85% to improve capital efficiency for stablecoin holders.",
+      proposer: "0x1234...5678",
+      status: "active",
+      votesFor: 45000,
+      votesAgainst: 12000,
+      totalVotes: 57000,
+      quorum: 100000,
+      startDate: new Date("2024-01-15"),
+      endDate: new Date("2024-01-22"),
+      category: "risk",
+    },
+    {
+      id: 2,
+      title: "Add LINK as Collateral Asset",
+      description:
+        "Proposal to add Chainlink (LINK) as a supported collateral asset with initial parameters of 65% collateral factor and 3.5% borrow APY.",
+      proposer: "0x8765...4321",
+      status: "active",
+      votesFor: 38000,
+      votesAgainst: 15000,
+      totalVotes: 53000,
+      quorum: 100000,
+      startDate: new Date("2024-01-14"),
+      endDate: new Date("2024-01-21"),
+      category: "asset",
+    },
+    {
+      id: 3,
+      title: "Reduce Protocol Treasury Distribution",
+      description:
+        "Proposal to reduce treasury allocation from 10% to 8% of protocol revenues to increase rewards for NOVA stakers.",
+      proposer: "0x9876...1234",
+      status: "passed",
+      votesFor: 125000,
+      votesAgainst: 45000,
+      totalVotes: 170000,
+      quorum: 100000,
+      startDate: new Date("2024-01-01"),
+      endDate: new Date("2024-01-08"),
+      category: "treasury",
+    },
+    {
+      id: 4,
+      title: "Implement Dynamic Interest Rate Model",
+      description:
+        "Proposal to upgrade to a new dynamic interest rate model that adjusts rates based on real-time utilization curves.",
+      proposer: "0x5555...9999",
+      status: "rejected",
+      votesFor: 42000,
+      votesAgainst: 85000,
+      totalVotes: 127000,
+      quorum: 100000,
+      startDate: new Date("2023-12-20"),
+      endDate: new Date("2023-12-27"),
+      category: "protocol",
+    },
+  ]);
 
   // Governance stats
   const governanceStats = {
@@ -134,19 +150,18 @@ const Governance = () => {
     votingPower: votingPower,
   };
 
-  const handleVote = (proposalId: string, support: boolean) => {
+  const handleVote = (id: number, support: boolean) => {
     if (votingPower <= 0) {
       toast.error("You need to stake NOVA tokens to vote");
       return;
     }
 
-    // Vote logic handled by database
     toast.success(
-      `Voted ${support ? "FOR" : "AGAINST"} with ${votingPower.toLocaleString()} NOVA`
+      `Voted ${support ? "FOR" : "AGAINST"} proposal #${id} with ${votingPower.toLocaleString()} NOVA`
     );
   };
 
-  const handleCreateProposal = async () => {
+  const handleCreateProposal = () => {
     if (!newProposal.title || !newProposal.description) {
       toast.error("Please fill in all fields");
       return;
@@ -154,24 +169,6 @@ const Governance = () => {
 
     if (votingPower < 1000) {
       toast.error("You need at least 1,000 staked NOVA to create a proposal");
-      return;
-    }
-
-    const endDate = new Date();
-    endDate.setDate(endDate.getDate() + 7);
-
-    const { error } = await supabase.from("proposals").insert({
-      title: newProposal.title,
-      description: newProposal.description,
-      category: newProposal.category,
-      proposer: userAddress,
-      status: "pending",
-      end_date: endDate.toISOString(),
-    });
-
-    if (error) {
-      console.error("Error creating proposal:", error);
-      toast.error("Failed to create proposal");
       return;
     }
 
@@ -259,7 +256,6 @@ const Governance = () => {
                   Staking
                 </Button>
               </Link>
-              <NotificationBell userAddress={userAddress} />
               <Button
                 variant="ghost"
                 size="icon"
@@ -524,105 +520,97 @@ const ProposalCard = ({
   getStatusColor: (status: string) => string;
   getStatusIcon: (status: string) => any;
 }) => {
-  const votePercentage =
-    proposal.totalVotes > 0
-      ? (proposal.votesFor / proposal.totalVotes) * 100
-      : 50;
-  const quorumPercentage = (proposal.totalVotes / proposal.quorum) * 100;
+  const votesForPercent = proposal.totalVotes > 0 ? (proposal.votesFor / proposal.totalVotes) * 100 : 0;
+  const quorumPercent = (proposal.totalVotes / proposal.quorum) * 100;
+  const timeLeft = Math.ceil(
+    (proposal.endDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
+  );
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.1 }}
-      className="bg-card border border-border rounded-xl p-6 hover:border-primary/50 transition-colors"
+      transition={{ delay: 0.1 * index }}
+      className="bg-card border border-border rounded-xl p-6 hover:border-primary/30 transition-all"
     >
-      <div className="flex flex-col sm:flex-row items-start justify-between gap-4 mb-4">
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-4">
         <div className="flex-1">
-          <div className="flex items-center gap-3 mb-2">
+          <div className="flex items-center gap-2 mb-2">
             <span
-              className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(
+              className={`px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(
                 proposal.status
               )}`}
             >
-              <FontAwesomeIcon
-                icon={getStatusIcon(proposal.status)}
-                className="mr-1"
-              />
+              <FontAwesomeIcon icon={getStatusIcon(proposal.status)} className="mr-1" />
               {proposal.status.toUpperCase()}
             </span>
             <span className="text-xs text-muted-foreground">
-              {proposal.category}
+              #{proposal.id} · {proposal.category}
             </span>
           </div>
           <h3 className="text-xl font-bold mb-2">{proposal.title}</h3>
-          <p className="text-sm text-muted-foreground mb-3">
+          <p className="text-muted-foreground text-sm mb-3">
             {proposal.description}
           </p>
-          <div className="flex items-center gap-4 text-xs text-muted-foreground">
-            <span>Proposer: {proposal.proposer}</span>
-            <span>•</span>
-            <span>
-              {proposal.startDate} - {proposal.endDate}
-            </span>
+          <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+            <span>Proposed by {proposal.proposer}</span>
+            {proposal.status === "active" && (
+              <span className="text-orange-500 font-medium">
+                {timeLeft} days left
+              </span>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Voting Progress */}
-      <div className="space-y-4 mb-4">
+      {/* Voting Stats */}
+      <div className="space-y-3 mb-4">
         <div>
-          <div className="flex justify-between text-sm mb-2">
-            <span className="text-green-500">
-              For: {proposal.votesFor.toLocaleString()} (
-              {votePercentage.toFixed(1)}%)
-            </span>
-            <span className="text-red-500">
-              Against: {proposal.votesAgainst.toLocaleString()} (
-              {(100 - votePercentage).toFixed(1)}%)
+          <div className="flex justify-between text-sm mb-1">
+            <span className="text-muted-foreground">For</span>
+            <span className="font-medium text-green-500">
+              {proposal.votesFor.toLocaleString()} ({votesForPercent.toFixed(1)}%)
             </span>
           </div>
-          <div className="relative h-3 bg-muted rounded-full overflow-hidden">
-            <div
-              className="absolute left-0 top-0 h-full bg-green-500 transition-all"
-              style={{ width: `${votePercentage}%` }}
-            />
-          </div>
+          <Progress value={votesForPercent} className="h-2" />
         </div>
-
         <div>
-          <div className="flex justify-between text-sm mb-2">
-            <span className="text-muted-foreground">
-              Quorum Progress: {proposal.totalVotes.toLocaleString()} /{" "}
-              {proposal.quorum.toLocaleString()}
-            </span>
-            <span className="text-muted-foreground">
-              {quorumPercentage.toFixed(1)}%
+          <div className="flex justify-between text-sm mb-1">
+            <span className="text-muted-foreground">Against</span>
+            <span className="font-medium text-red-500">
+              {proposal.votesAgainst.toLocaleString()} (
+              {(100 - votesForPercent).toFixed(1)}%)
             </span>
           </div>
-          <Progress value={Math.min(quorumPercentage, 100)} className="h-2" />
+          <Progress value={100 - votesForPercent} className="h-2" />
+        </div>
+        <div>
+          <div className="flex justify-between text-sm mb-1">
+            <span className="text-muted-foreground">Quorum Progress</span>
+            <span className="font-medium">
+              {proposal.totalVotes.toLocaleString()} /{" "}
+              {proposal.quorum.toLocaleString()} ({quorumPercent.toFixed(1)}%)
+            </span>
+          </div>
+          <Progress value={quorumPercent} className="h-2" />
         </div>
       </div>
 
-      {/* Voting Buttons */}
+      {/* Vote Buttons */}
       {proposal.status === "active" && (
         <div className="flex gap-3">
           <Button
             variant="outline"
-            className="flex-1 text-green-500 border-green-500/30 hover:bg-green-500/10"
+            className="flex-1 border-green-500/30 text-green-500 hover:bg-green-500/10"
             onClick={() => onVote(proposal.id, true)}
-            disabled={votingPower === 0}
           >
-            <FontAwesomeIcon icon={faCheckCircle} className="mr-2" />
             Vote For
           </Button>
           <Button
             variant="outline"
-            className="flex-1 text-red-500 border-red-500/30 hover:bg-red-500/10"
+            className="flex-1 border-red-500/30 text-red-500 hover:bg-red-500/10"
             onClick={() => onVote(proposal.id, false)}
-            disabled={votingPower === 0}
           >
-            <FontAwesomeIcon icon={faTimesCircle} className="mr-2" />
             Vote Against
           </Button>
         </div>

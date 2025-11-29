@@ -23,7 +23,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Link } from "react-router-dom";
 import { AreaChart, Area, ResponsiveContainer } from "recharts";
 import { toast } from "sonner";
-import { useCryptoPrices, getPrice, get24hChange, useMarketData, getTVL, get24hVolume } from "@/hooks/useCryptoPrices";
+import { useCryptoPrices } from "@/hooks/useCryptoPrices";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 
 const Markets = () => {
@@ -36,8 +36,7 @@ const Markets = () => {
   const [amount, setAmount] = useState("");
   const [sliderValue, setSliderValue] = useState([0]);
 
-  const { data: priceData, isLoading: pricesLoading } = useCryptoPrices();
-  const { data: marketData, isLoading: marketDataLoading } = useMarketData();
+  const { prices, loading: pricesLoading } = useCryptoPrices();
 
   useEffect(() => {
     if (isDark) {
@@ -151,21 +150,17 @@ const Markets = () => {
     ];
 
     return baseMarkets.map((market) => {
-      const livePrice = getPrice(market.symbol, priceData);
-      const price = livePrice > 0 ? livePrice : market.fallbackPrice;
-      const change24h = get24hChange(market.symbol, priceData);
-      const volume24h = get24hVolume(market.symbol, priceData);
-      const tvl = getTVL(market.symbol, marketData);
+      const livePrice = prices.find((p) => p.symbol === market.symbol);
+      const price = livePrice ? livePrice.price : market.fallbackPrice;
+      const change24h = livePrice ? livePrice.change24h : 0;
       return {
         ...market,
         price,
         change24h,
-        volume24h,
-        tvl,
         priceData: generatePriceData(price, price * 0.02),
       };
     });
-  }, [priceData, marketData]);
+  }, [prices]);
 
   const openModal = (market: typeof markets[0], type: "supply" | "borrow") => {
     setSelectedMarket(market);
@@ -315,13 +310,9 @@ const Markets = () => {
             transition={{ delay: 0.2 }}
             className="bg-card border border-border rounded-xl overflow-hidden"
           >
-            {pricesLoading || marketDataLoading ? (
+            {pricesLoading && (
               <div className="px-6 py-2 bg-primary/10 text-sm text-primary">
-                Loading live market data from CoinGecko...
-              </div>
-            ) : (
-              <div className="px-6 py-2 bg-primary/10 text-sm text-primary">
-                ✓ Live data with real-time prices, 24h volumes, and TVL metrics
+                Loading live prices from CoinGecko...
               </div>
             )}
             <div className="overflow-x-auto">
@@ -330,7 +321,6 @@ const Markets = () => {
                   <tr className="border-b border-border bg-muted/30">
                     <th className="text-left px-6 py-4 text-sm font-medium text-muted-foreground">Asset</th>
                     <th className="text-left px-6 py-4 text-sm font-medium text-muted-foreground">Price</th>
-                    <th className="text-left px-6 py-4 text-sm font-medium text-muted-foreground">24h Volume</th>
                     <th className="text-left px-6 py-4 text-sm font-medium text-muted-foreground">Supply APY</th>
                     <th className="text-left px-6 py-4 text-sm font-medium text-muted-foreground">Borrow APY</th>
                     <th className="text-left px-6 py-4 text-sm font-medium text-muted-foreground">Total Supply</th>
@@ -359,19 +349,8 @@ const Markets = () => {
                       <td className="px-6 py-4">
                         <p className="font-medium">${market.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                         <p className={`text-xs ${market.change24h >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                          {market.change24h >= 0 ? '+' : ''}{market.change24h?.toFixed(2) || '0.00'}%
+                          {market.change24h >= 0 ? '+' : ''}{market.change24h.toFixed(2)}%
                         </p>
-                      </td>
-                      <td className="px-6 py-4">
-                        <p className="font-medium">
-                          ${(market.volume24h || 0).toLocaleString(undefined, { 
-                            minimumFractionDigits: 0, 
-                            maximumFractionDigits: 0,
-                            notation: market.volume24h > 1000000 ? 'compact' : 'standard',
-                            compactDisplay: 'short'
-                          })}
-                        </p>
-                        <p className="text-xs text-muted-foreground">24h Vol</p>
                       </td>
                       <td className="px-6 py-4">
                         <p className="font-semibold text-green-500">{market.supplyAPY}%</p>
@@ -453,154 +432,92 @@ const Markets = () => {
                 </Button>
               </div>
 
-              {/* Tabs */}
-              <Tabs value={actionType} onValueChange={(v) => setActionType(v as "supply" | "borrow")}>
-                <TabsList className="w-full mb-6">
-                  <TabsTrigger value="supply" className="flex-1">
-                    <FontAwesomeIcon icon={faArrowDown} className="mr-2 text-green-500" />
-                    Supply
-                  </TabsTrigger>
-                  <TabsTrigger value="borrow" className="flex-1">
-                    <FontAwesomeIcon icon={faArrowUp} className="mr-2 text-orange-500" />
-                    Borrow
-                  </TabsTrigger>
+              {/* Action Tabs */}
+              <Tabs value={actionType} onValueChange={(value) => setActionType(value as "supply" | "borrow")} className="mb-6">
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="supply">Supply</TabsTrigger>
+                  <TabsTrigger value="borrow">Borrow</TabsTrigger>
                 </TabsList>
-
-                <TabsContent value="supply" className="space-y-6">
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <label className="text-sm text-muted-foreground">Amount to Supply</label>
-                      <span className="text-sm text-muted-foreground">
-                        Balance: {walletBalances[selectedMarket.symbol] || 0} {selectedMarket.symbol}
-                      </span>
-                    </div>
-                    <div className="relative">
-                      <Input
-                        type="number"
-                        placeholder="0.00"
-                        value={amount}
-                        onChange={(e) => handleAmountChange(e.target.value)}
-                        className="pr-20 text-lg"
-                      />
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-primary"
-                        onClick={() => handleAmountChange(String(walletBalances[selectedMarket.symbol] || 0))}
-                      >
-                        MAX
-                      </Button>
-                    </div>
-                    <Slider
-                      value={sliderValue}
-                      onValueChange={handleSliderChange}
-                      max={100}
-                      step={1}
-                      className="mt-4"
-                    />
-                    <div className="flex justify-between text-xs text-muted-foreground mt-2">
-                      <span>0%</span>
-                      <span>25%</span>
-                      <span>50%</span>
-                      <span>75%</span>
-                      <span>100%</span>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3 p-4 bg-muted/30 rounded-lg">
-                    <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Supply APY</span>
-                      <span className="text-sm font-semibold text-green-500">{selectedMarket.supplyAPY}%</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Collateral Factor</span>
-                      <span className="text-sm font-semibold">{selectedMarket.collateralFactor}%</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Est. Yearly Earnings</span>
-                      <span className="text-sm font-semibold text-green-500">
-                        ${calculateEstimatedEarnings().toFixed(2)}
-                      </span>
-                    </div>
-                  </div>
-
-                  <Button variant="hero" className="w-full" size="lg" onClick={handleTransaction}>
-                    Supply {selectedMarket.symbol}
-                    <FontAwesomeIcon icon={faArrowRight} className="ml-2" />
-                  </Button>
-                </TabsContent>
-
-                <TabsContent value="borrow" className="space-y-6">
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <label className="text-sm text-muted-foreground">Amount to Borrow</label>
-                      <span className="text-sm text-muted-foreground">
-                        Available: {(walletBalances[selectedMarket.symbol] * 0.5 || 0).toFixed(2)} {selectedMarket.symbol}
-                      </span>
-                    </div>
-                    <div className="relative">
-                      <Input
-                        type="number"
-                        placeholder="0.00"
-                        value={amount}
-                        onChange={(e) => handleAmountChange(e.target.value)}
-                        className="pr-20 text-lg"
-                      />
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-primary"
-                        onClick={() => handleAmountChange(String((walletBalances[selectedMarket.symbol] * 0.5 || 0).toFixed(2)))}
-                      >
-                        MAX
-                      </Button>
-                    </div>
-                    <Slider
-                      value={sliderValue}
-                      onValueChange={handleSliderChange}
-                      max={100}
-                      step={1}
-                      className="mt-4"
-                    />
-                    <div className="flex justify-between text-xs text-muted-foreground mt-2">
-                      <span>0%</span>
-                      <span>25%</span>
-                      <span>50%</span>
-                      <span>75%</span>
-                      <span>100%</span>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3 p-4 bg-muted/30 rounded-lg">
-                    <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Borrow APY</span>
-                      <span className="text-sm font-semibold text-orange-500">{selectedMarket.borrowAPY}%</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Liquidation Threshold</span>
-                      <span className="text-sm font-semibold">{selectedMarket.collateralFactor + 5}%</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Est. Yearly Cost</span>
-                      <span className="text-sm font-semibold text-orange-500">
-                        ${calculateEstimatedEarnings().toFixed(2)}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-2 p-3 bg-orange-500/10 rounded-lg border border-orange-500/20">
-                    <FontAwesomeIcon icon={faInfoCircle} className="text-orange-500 mt-0.5" />
-                    <p className="text-xs text-muted-foreground">
-                      Borrowing requires collateral. Your health factor must stay above 1.0 to avoid liquidation.
-                    </p>
-                  </div>
-
-                  <Button variant="hero" className="w-full" size="lg" onClick={handleTransaction}>
-                    Borrow {selectedMarket.symbol}
-                    <FontAwesomeIcon icon={faArrowRight} className="ml-2" />
-                  </Button>
-                </TabsContent>
               </Tabs>
+
+              {/* Amount Input */}
+              <div className="space-y-4">
+                <div>
+                  <div className="flex justify-between mb-2">
+                    <label className="text-sm text-muted-foreground">Amount</label>
+                    <span className="text-sm text-muted-foreground">
+                      Balance: {walletBalances[selectedMarket.symbol]} {selectedMarket.symbol}
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <Input
+                      type="number"
+                      placeholder="0.00"
+                      value={amount}
+                      onChange={(e) => handleAmountChange(e.target.value)}
+                      className="pr-16"
+                    />
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 h-7 text-xs"
+                      onClick={() => handleAmountChange(walletBalances[selectedMarket.symbol].toString())}
+                    >
+                      MAX
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Slider */}
+                <div className="space-y-2">
+                  <Slider
+                    value={sliderValue}
+                    onValueChange={handleSliderChange}
+                    max={100}
+                    step={1}
+                    className="w-full"
+                  />
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>0%</span>
+                    <span>25%</span>
+                    <span>50%</span>
+                    <span>75%</span>
+                    <span>100%</span>
+                  </div>
+                </div>
+
+                {/* Transaction Details */}
+                <div className="bg-muted/30 rounded-xl p-4 space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">{actionType === "supply" ? "Supply" : "Borrow"} APY</span>
+                    <span className="font-medium">
+                      {actionType === "supply" ? selectedMarket.supplyAPY : selectedMarket.borrowAPY}%
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Estimated yearly earnings</span>
+                    <span className="font-medium text-primary">
+                      ${calculateEstimatedEarnings().toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  {actionType === "borrow" && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Collateral Factor</span>
+                      <span className="font-medium">{selectedMarket.collateralFactor}%</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Action Button */}
+                <Button
+                  variant="hero"
+                  className="w-full"
+                  size="lg"
+                  onClick={handleTransaction}
+                >
+                  {actionType === "supply" ? "Supply" : "Borrow"} {selectedMarket.symbol}
+                </Button>
+              </div>
             </motion.div>
           </motion.div>
         )}
