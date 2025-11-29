@@ -19,6 +19,7 @@ import {
   faBolt,
   faUsers,
   faVoteYea,
+  faChartBar,
 } from "@fortawesome/free-solid-svg-icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -184,6 +185,12 @@ const Staking = () => {
                 <Button variant="ghost" size="sm" className="hidden sm:flex">
                   <FontAwesomeIcon icon={faCoins} className="mr-2" />
                   Markets
+                </Button>
+              </Link>
+              <Link to="/analytics">
+                <Button variant="ghost" size="sm" className="hidden sm:flex">
+                  <FontAwesomeIcon icon={faChartBar} className="mr-2" />
+                  Analytics
                 </Button>
               </Link>
               <Link to="/governance">
