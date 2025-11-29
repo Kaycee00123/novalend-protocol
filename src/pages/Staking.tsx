@@ -26,7 +26,7 @@ import { Slider } from "@/components/ui/slider";
 import { Progress } from "@/components/ui/progress";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
-import { useCryptoPrices, getPrice } from "@/hooks/useCryptoPrices";
+import { useCryptoPrices } from "@/hooks/useCryptoPrices";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 
 const Staking = () => {
@@ -38,7 +38,7 @@ const Staking = () => {
   const [sliderValue, setSliderValue] = useState([0]);
   const [selectedDuration, setSelectedDuration] = useState<number>(30);
 
-  const { data: priceData, isLoading: pricesLoading } = useCryptoPrices();
+  const { prices, loading: pricesLoading } = useCryptoPrices();
 
   useEffect(() => {
     if (isDark) {
@@ -54,7 +54,7 @@ const Staking = () => {
 
   // Mock wallet balance
   const novaBalance = 15000;
-  const novaPrice = getPrice("NOVA", priceData) || 2.45; // Fallback price
+  const novaPrice = 2.45;
 
   // Staking tiers with different APYs based on lock duration
   const stakingTiers = [
